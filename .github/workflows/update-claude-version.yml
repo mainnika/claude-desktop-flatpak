@@ -1,0 +1,45 @@
+name: Update Claude
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '0 0 * * *'
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: update-claude-version
+  cancel-in-progress: false
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out main
+        uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Update to the latest Claude version
+        id: update
+        run: ./update.sh
+
+      - name: Commit updated package metadata
+        if: steps.update.outputs.updated != '0'
+        env:
+          CLAUDE_VERSION: ${{ steps.update.outputs.claude }}
+        run: |
+          git config user.name "GitHub Bot"
+          git config user.email "<nikita+github-bot@tokarch.uk>"
+          git add com.anthropic.Claude.yml com.anthropic.Claude.metainfo.xml README.md
+          git commit -m "Update Claude Desktop to ${CLAUDE_VERSION}"
+          git push origin HEAD:main
+
+      # Pushes made with GITHUB_TOKEN do not trigger push workflows.
+      - name: Build the updated packages
+        if: steps.update.outputs.updated != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run build.yml --ref main

@@ -4,7 +4,7 @@ This project is a detached fork of [mboman/claude-desktop-flatpak](https://githu
 
 The purpose of this fork is to make the official Claude Desktop for Linux (beta) available on distributions with Flatpak support, including Fedora, Arch, and openSUSE. Builds download checksum-pinned Debian packages directly from Anthropic and repackage the application with its bundled Electron runtime, desktop entry, icons, and file associations.
 
-The fork simplifies maintenance around a single `flatpak-builder` workflow, with local builds and GitHub Actions builds for both x86_64 and aarch64. It adapts the upstream application to the Flatpak environment through Zypak, Wayland with fallback X11, and desktop keyring access. New Claude releases are adopted by updating the pinned package URLs, checksums, and release metadata, then rebuilding the bundles.
+The fork simplifies maintenance around a single `flatpak-builder` workflow, with local builds and GitHub Actions builds for both x86_64 and aarch64. It adapts the upstream application to the Flatpak environment through Zypak, Wayland with fallback X11, and desktop keyring access. A daily workflow adopts new Claude releases by updating the pinned packages and release metadata, then triggering builds for both architectures.
 
 The manifest currently packages Claude Desktop **2.42304.0** for **x86_64** and **aarch64**, using Freedesktop Platform and Electron BaseApp **25.08**. It uses the Electron runtime shipped with Claude Desktop and Zypak for Chromium sandbox integration inside Flatpak.
 
@@ -90,16 +90,27 @@ The Flatpak includes these permissions:
 
 ## Updating
 
-To package a new upstream release, update the Debian package URLs and SHA-256 checksums for both architectures in `com.anthropic.Claude.yml`, and update the release version and date in `com.anthropic.Claude.metainfo.xml`.
+### Automatic upstream updates
 
-Then rebuild and reinstall the bundle:
+The `Update Claude` workflow runs every day at 00:00 UTC and can also be started manually from GitHub Actions. It reads Anthropic's stable APT package indexes and selects the newest numeric release available for both amd64 and arm64. It keeps the current version if the indexes only offer older releases.
+
+When a newer release is available, the workflow updates the package URLs and SHA-256 checksums in the manifest, adds an AppStream release entry dated when the update is detected, and updates the version in this README. It commits those files directly to `main` and starts the build workflow. If no newer release is available, it makes no commit.
+
+The workflow uses the built-in `GITHUB_TOKEN` with `contents: write` and `actions: write`. Repository rules must permit the bot to push to `main`.
+
+### Updating locally
+
+Run the same updater with Bash, `curl`, `awk`, GNU `sed`, and GNU coreutils, then build and install the bundle:
 
 ```bash
+./update.sh
 ./build.sh
 flatpak install --user --reinstall claude-desktop.flatpak
 ```
 
-The manifest pins the application version; rebuilding alone does not select a newer release. Use the rebuilt bundle to update a local installation.
+The manifest pins the application version; rebuilding alone does not select a newer release. The workflow updates this repository and builds bundles; update your local installation by installing a new bundle. `flatpak update` does not fetch new upstream Debian packages.
+
+You can also update the package URLs and SHA-256 checksums for both architectures manually, together with the AppStream release metadata and the version in this README.
 
 ## Uninstalling
 
@@ -150,7 +161,9 @@ Edit `finish-args` in `com.anthropic.Claude.yml`, then rebuild and reinstall the
 - `com.anthropic.Claude.yml` - Main Flatpak manifest
 - `com.anthropic.Claude.metainfo.xml` - AppStream metadata
 - `build.sh` - Automated build script
+- `update.sh` - Updates pinned packages from Anthropic's stable APT indexes
 - `.github/workflows/build.yml` - Builds bundles for x86_64 and aarch64
+- `.github/workflows/update-claude-version.yml` - Daily upstream checks and automatic update commits
 - `README.md` - This file
 
 ## Distribution
