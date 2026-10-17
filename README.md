@@ -1,5 +1,7 @@
 # Claude Desktop Flatpak
 
+> https://nikita.tokarch.uk/packaging-claude-desktop-for-linux-with-flatpak/
+
 This project is a detached fork of [mboman/claude-desktop-flatpak](https://github.com/mboman/claude-desktop-flatpak).
 
 The purpose of this fork is to make the official Claude Desktop for Linux (beta) available on distributions with Flatpak support, including Fedora, Arch, and openSUSE. Builds download checksum-pinned Debian packages directly from Anthropic and repackage the application with its bundled Electron runtime, desktop entry, icons, and file associations.
@@ -51,11 +53,32 @@ No separate Claude source checkout or Electron download is needed. The script bu
 
 ### Automated builds
 
-The GitHub Actions workflow in `.github/workflows/build.yml` builds both x86_64 and aarch64 bundles on pull requests, manual runs, and pushes to `main` that change files other than Markdown or license files.
+The GitHub Actions workflow in `.github/workflows/build.yml` builds both x86_64 and aarch64 bundles on pull requests, manual runs, and pushes to `main` that change files other than Markdown or license files. After both builds succeed on `main`, it publishes OCI images to GHCR and deploys their Flatpak index to GitHub Pages.
+
+Pull requests and builds on other branches do not publish images or deploy Pages.
 
 ## Installing the Flatpak
 
-After building, install it with:
+### From the OCI remote
+
+Once the publishing workflow and repository setup below are complete, add Flathub for runtime dependencies and the Claude Desktop OCI remote:
+
+```bash
+flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+flatpak remote-add --user --if-not-exists claude-desktop oci+https://mainnika.github.io/claude-desktop-flatpak/
+flatpak install --user claude-desktop com.anthropic.Claude
+```
+
+The remote discovers the matching architecture automatically. The same remote can be added through its `.flatpakrepo` file:
+
+```bash
+flatpak remote-add --user --if-not-exists --from claude-desktop \
+    https://mainnika.github.io/claude-desktop-flatpak/claude-desktop.flatpakrepo
+```
+
+### From a local bundle
+
+After building locally, install the bundle with:
 
 ```bash
 flatpak install --user claude-desktop.flatpak
@@ -94,9 +117,23 @@ The Flatpak includes these permissions:
 
 The `Update Claude` workflow runs every day at 00:00 UTC and can also be started manually from GitHub Actions. It reads Anthropic's stable APT package indexes and selects the newest numeric release available for both amd64 and arm64. It keeps the current version if the indexes only offer older releases.
 
-When a newer release is available, the workflow updates the package URLs and SHA-256 checksums in the manifest, adds an AppStream release entry dated when the update is detected, and updates the version in this README. It commits those files directly to `main` and starts the build workflow. If no newer release is available, it makes no commit.
+When a newer release is available, the workflow updates the package URLs and SHA-256 checksums in the manifest, adds an AppStream release entry dated when the update is detected, and updates the version in this README. It commits those files directly to `main` and starts the build and publishing workflow. If no newer release is available, it makes no commit.
 
 The workflow uses the built-in `GITHUB_TOKEN` with `contents: write` and `actions: write`. Repository rules must permit the bot to push to `main`.
+
+### Updating an installation from the remote
+
+After the new images and index have been published, update normally:
+
+```bash
+flatpak update --user com.anthropic.Claude
+```
+
+For an existing bundle installation, switch its origin to the remote once:
+
+```bash
+flatpak install --user --reinstall claude-desktop com.anthropic.Claude
+```
 
 ### Updating locally
 
@@ -108,7 +145,7 @@ Run the same updater with Bash, `curl`, `awk`, GNU `sed`, and GNU coreutils, the
 flatpak install --user --reinstall claude-desktop.flatpak
 ```
 
-The manifest pins the application version; rebuilding alone does not select a newer release. The workflow updates this repository and builds bundles; update your local installation by installing a new bundle. `flatpak update` does not fetch new upstream Debian packages.
+The manifest pins the application version; rebuilding alone does not select a newer release. Local bundle installations can be updated by installing a new bundle. Installations from the OCI remote receive the published builds through `flatpak update`.
 
 You can also update the package URLs and SHA-256 checksums for both architectures manually, together with the AppStream release metadata and the version in this README.
 
@@ -162,11 +199,29 @@ Edit `finish-args` in `com.anthropic.Claude.yml`, then rebuild and reinstall the
 - `com.anthropic.Claude.metainfo.xml` - AppStream metadata
 - `build.sh` - Automated build script
 - `update.sh` - Updates pinned packages from Anthropic's stable APT indexes
-- `.github/workflows/build.yml` - Builds bundles for x86_64 and aarch64
+- `.github/workflows/build.yml` - Builds both architectures and publishes the GHCR images and Pages index
 - `.github/workflows/update-claude-version.yml` - Daily upstream checks and automatic update commits
 - `README.md` - This file
 
 ## Distribution
+
+### Publishing the OCI remote
+
+The publishing flow follows [gasinvein/proton-flatpak](https://github.com/gasinvein/proton-flatpak/blob/master/.github/workflows/flatpak.yml): a container registry stores the images, and GitHub Pages serves the Flatpak discovery index at `index/static`. This project uses GHCR as the registry.
+
+To enable publishing for this repository:
+
+1. In **Settings → Pages → Build and deployment**, select **GitHub Actions** as the source.
+2. Run **Build Flatpak** on `main`. The workflow uses the built-in token with `packages: write`, `pages: write`, and `id-token: write`; no separate registry credentials are required.
+3. After the first publication, open the `claude-desktop-flatpak` container package under the repository owner's GitHub Packages and set its visibility to **Public**. Newly created GHCR packages default to private; Flatpak clients need anonymous pull access.
+
+The default remote URL is `oci+https://mainnika.github.io/claude-desktop-flatpak/`. The index references image digests in `ghcr.io/mainnika/claude-desktop-flatpak`, with one entry per architecture. Only the small discovery index and `.flatpakrepo` file are hosted on Pages; application layers stay in GHCR.
+
+For a fork or a custom Pages domain, use that repository's Pages URL instead. The workflow generates the `.flatpakrepo` URL from the Pages configuration automatically.
+
+Builds for `main` are serialized, and the index is deployed only after both images have been published. Existing clients keep using the previously published index if a build or image publication fails. Keep old image versions in GHCR available until a newer index has deployed successfully.
+
+### Sharing bundles
 
 You can distribute the generated `claude-desktop.flatpak` bundle file to others. They can install it with:
 

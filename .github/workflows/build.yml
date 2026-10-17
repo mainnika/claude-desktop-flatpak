@@ -7,6 +7,14 @@ on:
   pull_request:
   workflow_dispatch:
 
+permissions:
+  contents: read
+
+# Keep main builds in order so an older build cannot replace a newer remote.
+concurrency:
+  group: flatpak-${{ github.ref }}
+  cancel-in-progress: false
+
 jobs:
   build:
     name: Build (${{ matrix.arch }})
@@ -30,4 +38,121 @@ jobs:
           bundle: claude-desktop-${{ matrix.arch }}.flatpak
           manifest-path: com.anthropic.Claude.yml
           arch: ${{ matrix.arch }}
+          repo-dir: repo
+          branch: master
           cache-key: flatpak-builder-${{ matrix.arch }}-${{ hashFiles('com.anthropic.Claude.yml') }}
+
+      - name: Export OCI image
+        run: |
+          flatpak build-bundle --oci --arch=${{ matrix.arch }} \
+            --runtime-repo=https://flathub.org/repo/flathub.flatpakrepo \
+            repo oci com.anthropic.Claude master
+          tar -C oci -cf claude-oci-${{ matrix.arch }}.tar .
+
+      - name: Upload OCI image
+        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        uses: actions/upload-artifact@v4
+        with:
+          name: claude-oci-${{ matrix.arch }}
+          path: claude-oci-${{ matrix.arch }}.tar
+          compression-level: 0
+          retention-days: 1
+
+  publish:
+    name: Publish OCI remote
+    needs: build
+    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      packages: write
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Configure GitHub Pages
+        id: pages
+        uses: actions/configure-pages@v5
+
+      - name: Install OCI tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y skopeo jq
+
+      - name: Download OCI images
+        uses: actions/download-artifact@v4
+        with:
+          pattern: claude-oci-*
+          merge-multiple: true
+
+      - name: Sign in to GHCR
+        env:
+          GHCR_TOKEN: ${{ github.token }}
+        run: |
+          printf '%s' "$GHCR_TOKEN" | skopeo login \
+            --authfile "$RUNNER_TEMP/ghcr-auth.json" \
+            --username "$GITHUB_ACTOR" --password-stdin ghcr.io
+
+      - name: Publish images and create the Flatpak index
+        env:
+          PAGES_BASE_URL: ${{ steps.pages.outputs.base_url }}
+        run: |
+          set -euo pipefail
+          image_name="${GITHUB_REPOSITORY,,}"
+          mkdir -p "$RUNNER_TEMP/site/index"
+
+          for arch in x86_64 aarch64; do
+            mkdir "oci-$arch"
+            tar -xf "claude-oci-$arch.tar" -C "oci-$arch"
+            tag="sha-${GITHUB_SHA}-${arch}"
+            skopeo copy --preserve-digests \
+              --authfile "$RUNNER_TEMP/ghcr-auth.json" \
+              --digestfile "$RUNNER_TEMP/digest-$arch" \
+              "oci:oci-$arch" "docker://ghcr.io/$image_name:$tag"
+            digest=$(cat "$RUNNER_TEMP/digest-$arch")
+            skopeo inspect --no-tags \
+              --authfile "$RUNNER_TEMP/ghcr-auth.json" \
+              "docker://ghcr.io/$image_name@$digest" > "$RUNNER_TEMP/image-$arch.json"
+            jq -e --arg ref "app/com.anthropic.Claude/$arch/master" '
+              .Labels["org.flatpak.ref"] == $ref and
+              (.Labels["org.flatpak.metadata"] | type == "string" and length > 0)
+            ' "$RUNNER_TEMP/image-$arch.json"
+          done
+
+          jq -s --arg repository "$image_name" '
+            {
+              Registry: "https://ghcr.io",
+              Results: [{
+                Name: $repository,
+                Images: map({
+                  Digest: .Digest,
+                  MediaType: "application/vnd.oci.image.manifest.v1+json",
+                  OS: .Os,
+                  Architecture: .Architecture,
+                  Labels: .Labels
+                })
+              }]
+            }
+          ' "$RUNNER_TEMP/image-x86_64.json" "$RUNNER_TEMP/image-aarch64.json" \
+            > "$RUNNER_TEMP/site/index/static"
+
+          cat > "$RUNNER_TEMP/site/claude-desktop.flatpakrepo" <<EOF
+          [Flatpak Repo]
+          Title=Claude Desktop
+          Comment=Community-maintained Flatpak packaging of Claude Desktop
+          Description=Official Claude Desktop for Linux repackaged for Flatpak
+          Homepage=https://github.com/$GITHUB_REPOSITORY
+          Url=oci+${PAGES_BASE_URL%/}/
+          DefaultBranch=master
+          EOF
+
+      - name: Upload the Flatpak index to GitHub Pages
+        uses: actions/upload-pages-artifact@v4
+        with:
+          path: ${{ runner.temp }}/site
+
+      - name: Deploy the Flatpak index
+        id: deployment
+        uses: actions/deploy-pages@v4
