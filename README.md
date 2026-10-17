@@ -1,10 +1,14 @@
 # Claude Desktop Flatpak
 
-Community-maintained Flatpak packaging of the official Claude Desktop for Linux (beta). It repackages Anthropic's Debian packages so the application can run on distributions with Flatpak support, including Fedora, Arch, and openSUSE.
+This project is a detached fork of [mboman/claude-desktop-flatpak](https://github.com/mboman/claude-desktop-flatpak).
+
+The purpose of this fork is to make the official Claude Desktop for Linux (beta) available on distributions with Flatpak support, including Fedora, Arch, and openSUSE. Builds download checksum-pinned Debian packages directly from Anthropic and repackage the application with its bundled Electron runtime, desktop entry, icons, and file associations.
+
+The fork simplifies maintenance around a single `flatpak-builder` workflow, with local builds and GitHub Actions builds for both x86_64 and aarch64. It adapts the upstream application to the Flatpak environment through Zypak, Wayland with fallback X11, and desktop keyring access. New Claude releases are adopted by updating the pinned package URLs, checksums, and release metadata, then rebuilding the bundles.
 
 The manifest currently packages Claude Desktop **2.42304.0** for **x86_64** and **aarch64**, using Freedesktop Platform and Electron BaseApp **25.08**. It uses the Electron runtime shipped with Claude Desktop and Zypak for Chromium sandbox integration inside Flatpak.
 
-The package includes the upstream desktop entry, icons, and MIME definitions for `.mcpb`, `.dxt`, and `.skill` files.
+The packaged MIME definitions cover `.mcpb`, `.dxt`, and `.skill` files.
 
 ## Prerequisites
 
