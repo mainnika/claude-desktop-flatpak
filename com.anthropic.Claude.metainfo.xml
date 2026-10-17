@@ -7,15 +7,14 @@
   <summary>AI assistant from Anthropic</summary>
   <description>
     <p>
-      Claude is an AI assistant created by Anthropic. This desktop application
-      provides a native interface to interact with Claude, offering features like:
+      Claude is an AI assistant created by Anthropic. This is an unofficial
+      Flatpak repackaging of the official Claude desktop app for Linux (beta),
+      offering:
     </p>
     <ul>
-      <li>Natural language conversations</li>
-      <li>Code generation and analysis</li>
-      <li>Document processing and analysis</li>
-      <li>File system integration via MCP servers</li>
-      <li>Desktop Commander for system interaction</li>
+      <li>Chat with Claude</li>
+      <li>Claude Code sessions with visual diff review</li>
+      <li>MCP servers and desktop extensions</li>
     </ul>
   </description>
   <launchable type="desktop-id">com.anthropic.Claude.desktop</launchable>
@@ -24,10 +23,6 @@
   <developer_name>Anthropic</developer_name>
   <content_rating type="oars-1.1"/>
   <releases>
-    <release version="0.14.10" date="2024-11-01">
-      <description>
-        <p>Latest release of Claude Desktop</p>
-      </description>
-    </release>
+    <release version="2.42304.0" date="2026-10-16"/>
   </releases>
 </component>

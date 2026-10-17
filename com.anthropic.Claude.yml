@@ -1,89 +1,86 @@
 app-id: com.anthropic.Claude
 runtime: org.freedesktop.Platform
-runtime-version: '24.08'
+runtime-version: '25.08'
 sdk: org.freedesktop.Sdk
+# Provides zypak (Chromium sandbox inside Flatpak), libsecret, libnotify, etc.
 base: org.electronjs.Electron2.BaseApp
-base-version: '24.08'
+base-version: '25.08'
 command: claude-desktop
 separate-locales: false
 
 finish-args:
-  # X11 + XShm access
   - --share=ipc
-  - --socket=x11
-  # Wayland access
-  - --socket=wayland
-  # Audio access
-  - --socket=pulseaudio
-  # Network access
   - --share=network
+  # Wayland first, X11 only when Wayland is unavailable
+  - --socket=wayland
+  - --socket=fallback-x11
+  - --socket=pulseaudio
   # GPU acceleration
   - --device=dri
-  # Home directory access for configuration
+  # Project folders for Claude Code and file attachments
   - --filesystem=home
-  # Access to .config for storing settings
-  - --filesystem=xdg-config/claude:create
-  # Session bus for desktop integration
-  - --socket=session-bus
-  # System bus for some desktop features
-  - --system-talk-name=org.freedesktop.Notifications
-  # Allow desktop notifications
+  # Notifications and tray icon
   - --talk-name=org.freedesktop.Notifications
   - --talk-name=org.kde.StatusNotifierWatcher
-  # Allow file picker dialogs
-  - --talk-name=org.freedesktop.portal.FileChooser
+  # Keyring, so the sign-in persists (GNOME Keyring / KDE Wallet)
+  - --talk-name=org.freedesktop.secrets
+  - --talk-name=org.kde.kwalletd5
+  - --talk-name=org.kde.kwalletd6
 
 modules:
-  - name: nodejs
-    buildsystem: simple
-    build-commands:
-      - mkdir -p /app/bin /app/lib
-      - cp -a * /app/lib/nodejs/
-      - ln -s /app/lib/nodejs/bin/node /app/bin/node
-      - ln -s /app/lib/nodejs/bin/npm /app/bin/npm
-      - ln -s /app/lib/nodejs/bin/npx /app/bin/npx
-    sources:
-      - type: archive
-        url: https://nodejs.org/dist/v20.11.0/node-v20.11.0-linux-x64.tar.xz
-        sha256: 5c2f2762e6c839b53f1fe15c6c1893c0540c8dfc73cbafe6b02886d52e96f37e
-        dest: /app/lib/nodejs
-
   - name: claude-desktop
     buildsystem: simple
+    # Prebuilt binaries: don't strip or split out debuginfo
+    build-options:
+      no-debuginfo: true
+      strip: false
     build-commands:
-      # Create directory structure
-      - mkdir -p /app/lib/claude-desktop
-      - mkdir -p /app/bin
-      - mkdir -p /app/share/applications
-      - mkdir -p /app/share/icons/hicolor/256x256/apps
-      
-      # Copy application files
-      - cp -r app.asar /app/lib/claude-desktop/
-      - cp -r resources /app/lib/claude-desktop/ || true
-      
-      # Install icons
-      - install -Dm644 claude_6_256x256x32.png /app/share/icons/hicolor/256x256/apps/com.anthropic.Claude.png
-      
-      # Create launcher script
+      # Unpack the official Debian package
+      - ar x claude-desktop.deb
+      - tar -xf data.tar.xz
+
+      # Application (ships its own Electron runtime)
+      - cp -a usr/lib/claude-desktop /app/lib/claude-desktop
+      # setuid sandbox helper is unusable in Flatpak; zypak replaces it
+      - rm -f /app/lib/claude-desktop/chrome-sandbox
+
+      # Launcher
+      - install -Dm755 claude-desktop.sh /app/bin/claude-desktop
+
+      # Icons, renamed to the app ID
       - |
-        cat > /app/bin/claude-desktop << 'EOF'
-        #!/bin/bash
-        exec electron /app/lib/claude-desktop/app.asar "$@"
-        EOF
-      - chmod +x /app/bin/claude-desktop
-      
-      # Install desktop file
-      - install -Dm644 com.anthropic.Claude.desktop /app/share/applications/com.anthropic.Claude.desktop
-      
-      # Install metainfo
+        for size in 16 32 48 128 256; do
+          install -Dm644 usr/share/icons/hicolor/${size}x${size}/apps/claude-desktop.png \
+            /app/share/icons/hicolor/${size}x${size}/apps/com.anthropic.Claude.png
+        done
+
+      # Desktop entry from the package, pointed at the renamed icon
+      - install -Dm644 usr/share/applications/com.anthropic.Claude.desktop
+        /app/share/applications/com.anthropic.Claude.desktop
+      - desktop-file-edit --set-icon=com.anthropic.Claude /app/share/applications/com.anthropic.Claude.desktop
+
+      # MIME types for .mcpb, .dxt and .skill files
+      - install -Dm644 usr/lib/claude-desktop/resources/linux-mime/com.anthropic.Claude.xml
+        /app/share/mime/packages/com.anthropic.Claude.xml
+
       - install -Dm644 com.anthropic.Claude.metainfo.xml /app/share/metainfo/com.anthropic.Claude.metainfo.xml
-    
+
     sources:
-      - type: dir
-        path: ../claude-desktop/build/electron-app
       - type: file
-        path: ../claude-desktop/build/claude_6_256x256x32.png
+        url: https://downloads.claude.ai/claude-desktop/apt/stable/pool/main/c/claude-desktop/claude-desktop_2.42304.0_amd64.deb
+        sha256: 74cd2ccc29d24165144e455cbc872c6cc2a24a263b83e73420e95f89166d4aa4
+        dest-filename: claude-desktop.deb
+        only-arches: [x86_64]
       - type: file
-        path: com.anthropic.Claude.desktop
+        url: https://downloads.claude.ai/claude-desktop/apt/stable/pool/main/c/claude-desktop/claude-desktop_2.42304.0_arm64.deb
+        sha256: 8fb3c4203e53882f037acc822f350c7d3da66cd691e39b98aeed4d66d7328648
+        dest-filename: claude-desktop.deb
+        only-arches: [aarch64]
+      - type: script
+        dest-filename: claude-desktop.sh
+        commands:
+          - export TMPDIR="$XDG_RUNTIME_DIR/app/$FLATPAK_ID"
+          - exec zypak-wrapper /app/lib/claude-desktop/claude-desktop --ozone-platform-hint=auto
+            --enable-features=WaylandWindowDecorations "$@"
       - type: file
         path: com.anthropic.Claude.metainfo.xml
