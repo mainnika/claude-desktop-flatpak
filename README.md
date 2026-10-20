@@ -1,5 +1,19 @@
 # Claude Desktop Flatpak
 
+## TL;DR
+
+With Flatpak installed, add the remotes, install Claude Desktop, and launch it:
+
+```bash
+flatpak remote-add --user --if-not-exists claude-desktop oci+https://mainnika.github.io/claude-desktop-flatpak/
+flatpak install --user claude-desktop com.anthropic.Claude
+flatpak run com.anthropic.Claude
+```
+
+To update later, run `flatpak update --user com.anthropic.Claude`.
+
+## About
+
 > https://nikita.tokarch.uk/packaging-claude-desktop-for-linux-with-flatpak/
 
 This project is a detached fork of [mboman/claude-desktop-flatpak](https://github.com/mboman/claude-desktop-flatpak).
