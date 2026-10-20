@@ -8,7 +8,7 @@ The purpose of this fork is to make the official Claude Desktop for Linux (beta)
 
 The fork simplifies maintenance around a single `flatpak-builder` workflow, with local builds and GitHub Actions builds for both x86_64 and aarch64. It adapts the upstream application to the Flatpak environment through Zypak, Wayland with fallback X11, and desktop keyring access. A daily workflow adopts new Claude releases by updating the pinned packages and release metadata, then triggering builds for both architectures.
 
-The manifest currently packages Claude Desktop **2.42304.0** for **x86_64** and **aarch64**, using Freedesktop Platform and Electron BaseApp **25.08**. It uses the Electron runtime shipped with Claude Desktop and Zypak for Chromium sandbox integration inside Flatpak.
+The manifest currently packages Claude Desktop **2.42304.2** for **x86_64** and **aarch64**, using Freedesktop Platform and Electron BaseApp **25.08**. It uses the Electron runtime shipped with Claude Desktop and Zypak for Chromium sandbox integration inside Flatpak.
 
 The packaged MIME definitions cover `.mcpb`, `.dxt`, and `.skill` files.
 

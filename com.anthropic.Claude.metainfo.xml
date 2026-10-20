@@ -23,6 +23,7 @@
   <developer_name>Anthropic</developer_name>
   <content_rating type="oars-1.1"/>
   <releases>
+    <release version="2.42304.2" date="2026-10-20"/>
     <release version="2.42304.0" date="2026-10-16"/>
   </releases>
 </component>
